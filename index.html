@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手勢隕石閃避 | SWP08</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #151b30; --text: #e8ecf8; --muted: #8b94b3;
+    --accent: #6ee7ff; --left: #1e3a8a; --right: #9a3412; --shield: #065f46; --idle: #0f172a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Noto Sans TC", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  header { padding: 18px 16px 6px; text-align: center; }
+  header h1 { margin: 0; font-size: 1.6rem; letter-spacing: 1px; }
+  header p { margin: 6px 0 0; color: var(--muted); font-size: .95rem; }
+  main {
+    display: flex; flex-wrap: wrap; gap: 16px; justify-content: center;
+    padding: 16px; max-width: 1000px; margin: 0 auto;
+  }
+  .panel { background: var(--panel); border-radius: 14px; padding: 14px; }
+  #side { width: 300px; max-width: 100%; display: flex; flex-direction: column; gap: 12px; }
+  #webcamBox {
+    width: 100%; aspect-ratio: 1; background: #000; border-radius: 10px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: .9rem;
+  }
+  #webcamBox canvas { width: 100%; height: 100%; display: block; }
+  #result { text-align: center; }
+  #resultLabel { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+  #resultProb { color: var(--muted); }
+  .bar-row { display: grid; grid-template-columns: 70px 1fr 48px; gap: 6px; align-items: center; font-size: .85rem; margin: 4px 0; }
+  .bar { height: 10px; background: #26304f; border-radius: 6px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .1s; }
+  .bar-row span:last-child { text-align: right; color: var(--muted); }
+  label.small { font-size: .8rem; color: var(--muted); }
+  input[type=text] {
+    width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #2c3658;
+    background: #0e1426; color: var(--text); font-size: .85rem;
+  }
+  button {
+    padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; font-size: 1rem;
+    font-weight: 700; background: var(--accent); color: #062033;
+  }
+  button.secondary { background: #2c3658; color: var(--text); }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btns button { flex: 1; }
+  #status { font-size: .85rem; color: var(--muted); min-height: 1.2em; }
+
+  #stage {
+    position: relative; width: 400px; max-width: 100%; border-radius: 14px; overflow: hidden;
+    background: var(--idle); transition: background-color .35s;
+  }
+  #stage.left { background: var(--left); }
+  #stage.right { background: var(--right); }
+  #stage.shield { background: var(--shield); }
+  #stage.hit::after {
+    content: ""; position: absolute; inset: 0; background: rgba(255, 40, 40, .45); pointer-events: none;
+  }
+  #game { width: 100%; display: block; aspect-ratio: 400 / 560; }
+  #hud {
+    position: absolute; top: 8px; left: 10px; right: 10px; display: flex; justify-content: space-between;
+    font-weight: 700; text-shadow: 0 1px 3px #000; pointer-events: none;
+  }
+  #msg {
+    position: absolute; top: 40%; left: 0; right: 0; text-align: center; font-size: 2rem; font-weight: 800;
+    text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .25s; pointer-events: none;
+  }
+  #msg.show { opacity: 1; }
+  #overlay {
+    position: absolute; inset: 0; background: rgba(5, 8, 20, .82); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 20px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h2 { margin: 0; font-size: 1.6rem; }
+  #howto { max-width: 1000px; margin: 0 auto 30px; padding: 0 16px; }
+  #howto .panel { line-height: 1.7; }
+  #howto h2 { margin-top: 0; font-size: 1.2rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  th, td { border-bottom: 1px solid #2c3658; padding: 6px 8px; text-align: left; }
+  kbd { background: #2c3658; padding: 1px 6px; border-radius: 4px; font-size: .85em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>☄️ 手勢隕石閃避</h1>
+  <p>用身體往左、往右傾來駕駛太空船，雙手交叉開啟護盾！</p>
+</header>
+
+<main>
+  <section id="side" class="panel">
+    <div id="webcamBox">攝影機尚未啟動</div>
+    <div id="result">
+      <div id="resultLabel">—</div>
+      <div id="resultProb">信心分數：—</div>
+    </div>
+    <div id="bars"></div>
+    <div>
+      <label class="small" for="modelUrl">模型網址（Teachable Machine 分享連結或 ./my_model/）</label>
+      <input id="modelUrl" type="text">
+    </div>
+    <div class="btns">
+      <button id="startBtn">📷 啟動並開始</button>
+      <button id="kbBtn" class="secondary">⌨️ 鍵盤試玩</button>
+    </div>
+    <div id="status"></div>
+  </section>
+
+  <section id="stage">
+    <canvas id="game" width="400" height="560"></canvas>
+    <div id="hud"><span id="score">分數 0</span><span id="lives">❤️❤️❤️</span></div>
+    <div id="msg"></div>
+    <div id="overlay">
+      <h2>準備好了嗎？</h2>
+      <p>按左側「啟動並開始」，允許攝影機權限後即可遊玩。</p>
+    </div>
+  </section>
+</main>
+
+<section id="howto">
+  <div class="panel">
+    <h2>🎮 遊戲玩法</h2>
+    <p>隕石會從上方落下，用身體動作控制底部的太空船左右移動閃避。每撞到一次扣一顆心，三顆心用完遊戲結束；存活越久分數越高，隕石也會越來越快。</p>
+    <table>
+      <tr><th>模型類別</th><th>動作</th><th>遊戲效果</th></tr>
+      <tr><td>左</td><td>身體往畫面左邊傾（或舉左手）</td><td>太空船往左移、背景變藍、顯示「⬅ 向左」</td></tr>
+      <tr><td>右</td><td>身體往畫面右邊傾（或舉右手）</td><td>太空船往右移、背景變橘、顯示「向右 ➡」</td></tr>
+      <tr><td>無</td><td>正常坐好</td><td>太空船停住</td></tr>
+      <tr><td>護盾（選用）</td><td>雙手在胸前交叉</td><td>開啟 2 秒護盾、背景變綠、播放音效（冷卻 6 秒）</td></tr>
+    </table>
+    <p>撞到隕石時畫面會閃紅、震動並播放撞擊音效。辨識信心分數需達 75% 才會觸發動作。也可以用 <kbd>←</kbd> <kbd>→</kbd> <kbd>空白鍵</kbd> 以鍵盤試玩。</p>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script>
+// ===== 設定區：換成你自己的模型網址 =====
+const CONFIG = {
+  MODEL_URL: './my_model/',   // 或貼上 https://teachablemachine.withgoogle.com/models/XXXXXXX/
+  THRESHOLD: 0.75,            // 信心分數門檻
+  // 類別名稱包含以下字詞時，對應到遊戲動作（其他類別視為「不動」）
+  LABELS: {
+    left:   ['左', 'left'],
+    right:  ['右', 'right'],
+    shield: ['護盾', 'shield']
+  }
+};
+
+const $ = s => document.querySelector(s);
+const params = new URLSearchParams(location.search);
+$('#modelUrl').value = params.get('model') || CONFIG.MODEL_URL;
+
+// ===== 音效（Web Audio，不需音檔）=====
+let actx = null;
+function beep(freq = 440, dur = 0.12, type = 'sine', vol = 0.15) {
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+  o.connect(g).connect(actx.destination);
+  o.start(); o.stop(actx.currentTime + dur);
+}
+
+// ===== Teachable Machine =====
+let model = null, webcam = null, predicting = false;
+let currentAction = 'idle';
+
+function normalizeUrl(u) { u = u.trim(); return u.endsWith('/') ? u : u + '/'; }
+
+function labelToAction(name) {
+  const n = name.toLowerCase();
+  for (const [act, words] of Object.entries(CONFIG.LABELS)) {
+    if (words.some(w => n.includes(w.toLowerCase()))) return act;
+  }
+  return 'idle';
+}
+
+async function initModel() {
+  const base = normalizeUrl($('#modelUrl').value);
+  model = await tmImage.load(base + 'model.json', base + 'metadata.json');
+  webcam = new tmImage.Webcam(240, 240, true); // true = 鏡像，與 Teachable Machine 訓練畫面一致
+  await webcam.setup();
+  await webcam.play();
+  const box = $('#webcamBox');
+  box.innerHTML = '';
+  box.appendChild(webcam.canvas);
+}
+
+let barEls = null;
+function updateBars(preds) {
+  if (!barEls) {
+    $('#bars').innerHTML = preds.map((p, i) =>
+      `<div class="bar-row"><span>${p.className}</span><div class="bar"><div id="b${i}"></div></div><span id="p${i}">0%</span></div>`
+    ).join('');
+    barEls = preds.map((_, i) => [$('#b' + i), $('#p' + i)]);
+  }
+  preds.forEach((p, i) => {
+    const pct = (p.probability * 100).toFixed(0) + '%';
+    barEls[i][0].style.width = pct;
+    barEls[i][1].textContent = pct;
+  });
+}
+
+async function predict() {
+  if (!model || !webcam || predicting) return;
+  predicting = true;
+  try {
+    const preds = await model.predict(webcam.canvas);
+    updateBars(preds);
+    const best = preds.reduce((a, b) => (b.probability > a.probability ? b : a));
+    $('#resultLabel').textContent = best.className;
+    $('#resultProb').textContent = `信心分數：${(best.probability * 100).toFixed(1)}%`;
+    currentAction = best.probability >= CONFIG.THRESHOLD ? labelToAction(best.className) : 'idle';
+  } catch (e) {
+    console.error(e);
+  } finally {
+    predicting = false;
+  }
+}
+
+// ===== 鍵盤（測試用）=====
+const keys = { left: false, right: false, shield: false };
+const keyMap = { ArrowLeft: 'left', ArrowRight: 'right', ' ': 'shield' };
+addEventListener('keydown', e => { if (keyMap[e.key]) { keys[keyMap[e.key]] = true; e.preventDefault(); } });
+addEventListener('keyup', e => { if (keyMap[e.key]) keys[keyMap[e.key]] = false; });
+function keyAction() {
+  if (keys.shield) return 'shield';
+  if (keys.left) return 'left';
+  if (keys.right) return 'right';
+  return null;
+}
+
+// ===== 畫面變化：背景、訊息、音效 =====
+let shownAction = 'idle', msgTimer = null;
+const ACTION_MSG = { left: '⬅ 向左', right: '向右 ➡', shield: '🛡️ 護盾！', idle: '' };
+function applyAction(act) {
+  if (act === shownAction) return;
+  shownAction = act;
+  const stage = $('#stage');
+  stage.classList.remove('left', 'right', 'shield');
+  if (act !== 'idle') {
+    stage.classList.add(act);
+    showMsg(ACTION_MSG[act], 600);
+    beep(act === 'left' ? 520 : act === 'right' ? 700 : 880, 0.06, 'triangle', 0.08);
+  }
+}
+function showMsg(text, ms = 900) {
+  const m = $('#msg');
+  m.textContent = text;
+  m.classList.add('show');
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => m.classList.remove('show'), ms);
+}
+
+// ===== 遊戲 =====
+const cv = $('#game'), ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const stars = Array.from({ length: 70 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: Math.random() * 1.8 + 0.4 }));
+let game = null, shake = 0;
+
+function getBest() { try { return +localStorage.getItem('swp08-best') || 0; } catch { return 0; } }
+function setBest(v) { try { localStorage.setItem('swp08-best', v); } catch {} }
+
+function newGame() {
+  game = {
+    running: true, score: 0, lives: 3, t: 0,
+    ship: { x: W / 2, y: H - 50, r: 18 },
+    meteors: [], spawn: 0.5, shield: 0, shieldCd: 0, inv: 0
+  };
+  $('#overlay').classList.add('hidden');
+  updateHud();
+}
+
+function updateHud() {
+  $('#score').textContent = '分數 ' + Math.floor(game.score);
+  $('#lives').textContent = '❤️'.repeat(Math.max(0, game.lives)) || '💀';
+}
+
+function gameOver() {
+  game.running = false;
+  const score = Math.floor(game.score);
+  const best = Math.max(score, getBest());
+  setBest(best);
+  beep(200, 0.5, 'sawtooth', 0.2);
+  setTimeout(() => beep(130, 0.6, 'sawtooth', 0.2), 250);
+  const ov = $('#overlay');
+  ov.innerHTML = `<h2>💥 遊戲結束</h2><p>分數：${score}　最高分：${best}</p><button id="againBtn">再玩一次</button>`;
+  ov.classList.remove('hidden');
+  $('#againBtn').onclick = newGame;
+}
+
+function hit() {
+  game.lives--;
+  game.inv = 1.2;
+  shake = 0.35;
+  beep(120, 0.3, 'sawtooth', 0.25);
+  const stage = $('#stage');
+  stage.classList.add('hit');
+  setTimeout(() => stage.classList.remove('hit'), 180);
+  showMsg('💥 被擊中！', 700);
+  updateHud();
+  if (game.lives <= 0) gameOver();
+}
+
+function update(dt, act) {
+  const s = game.ship;
+  if (act === 'left') s.x -= 320 * dt;
+  if (act === 'right') s.x += 320 * dt;
+  s.x = Math.max(s.r, Math.min(W - s.r, s.x));
+
+  if (act === 'shield' && game.shieldCd <= 0) {
+    game.shield = 2; game.shieldCd = 6;
+    beep(660, 0.25, 'square', 0.12);
+  }
+  game.shield = Math.max(0, game.shield - dt);
+  game.shieldCd = Math.max(0, game.shieldCd - dt);
+  game.inv = Math.max(0, game.inv - dt);
+
+  game.t += dt;
+  game.score += dt * 10;
+  const diff = 1 + game.t / 20;
+
+  game.spawn -= dt;
+  if (game.spawn <= 0) {
+    const r = 12 + Math.random() * 18;
+    game.meteors.push({ x: r + Math.random() * (W - 2 * r), y: -r, r, v: (110 + Math.random() * 90) * diff, rot: Math.random() * 6 });
+    game.spawn = Math.max(0.22, 0.9 / diff);
+  }
+
+  for (const m of game.meteors) { m.y += m.v * dt; m.rot += dt; }
+  for (let i = game.meteors.length - 1; i >= 0; i--) {
+    const m = game.meteors[i];
+    if (m.y - m.r > H) { game.meteors.splice(i, 1); continue; }
+    if (Math.hypot(m.x - s.x, m.y - s.y) < m.r + s.r * 0.8) {
+      game.meteors.splice(i, 1);
+      if (game.shield > 0) { game.score += 20; beep(1000, 0.08, 'square', 0.1); }
+      else if (game.inv <= 0) { hit(); if (!game.running) return; }
+    }
+  }
+  updateHud();
+}
+
+function draw(dt) {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  if (shake > 0) { shake -= dt; ctx.translate((Math.random() - .5) * 12, (Math.random() - .5) * 12); }
+
+  // 星空
+  ctx.fillStyle = 'rgba(255,255,255,.8)';
+  for (const st of stars) {
+    st.y += st.s * 30 * dt; if (st.y > H) { st.y = 0; st.x = Math.random() * W; }
+    ctx.fillRect(st.x, st.y, st.s, st.s);
+  }
+
+  if (game) {
+    // 隕石
+    for (const m of game.meteors) {
+      ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(m.rot);
+      ctx.fillStyle = '#8b5e3c'; ctx.beginPath(); ctx.arc(0, 0, m.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#5c3d26';
+      ctx.beginPath(); ctx.arc(m.r * .3, -m.r * .2, m.r * .25, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-m.r * .35, m.r * .3, m.r * .18, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    // 太空船
+    const s = game.ship;
+    const blink = game.inv > 0 && Math.floor(game.inv * 10) % 2 === 0;
+    if (!blink) {
+      ctx.fillStyle = '#ffb347';
+      ctx.beginPath(); ctx.moveTo(s.x - 7, s.y + 16); ctx.lineTo(s.x, s.y + 26 + Math.random() * 8); ctx.lineTo(s.x + 7, s.y + 16); ctx.fill();
+      ctx.fillStyle = '#e8ecf8';
+      ctx.beginPath(); ctx.moveTo(s.x, s.y - 22); ctx.lineTo(s.x + 18, s.y + 16); ctx.lineTo(s.x - 18, s.y + 16); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#6ee7ff';
+      ctx.beginPath(); ctx.arc(s.x, s.y - 2, 5, 0, Math.PI * 2); ctx.fill();
+    }
+    if (game.shield > 0) {
+      ctx.strokeStyle = `rgba(110,255,180,${0.5 + 0.4 * Math.sin(game.t * 20)})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r + 14, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (game.running && game.shieldCd > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '13px sans-serif';
+      ctx.fillText(`護盾冷卻 ${game.shieldCd.toFixed(1)}s`, 10, H - 10);
+    }
+  }
+  ctx.restore();
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (webcam) { webcam.update(); predict(); }
+  const act = keyAction() || currentAction;
+  applyAction(act);
+  if (game && game.running) update(dt, act);
+  draw(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ===== 按鈕 =====
+function ensureAudio() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();
+}
+
+$('#startBtn').onclick = async () => {
+  ensureAudio();
+  const status = $('#status');
+  if (!model) {
+    status.textContent = '載入模型與攝影機中…';
+    try {
+      await initModel();
+      status.textContent = '✅ 模型已載入，開始遊戲！';
+    } catch (e) {
+      console.error(e);
+      model = null; webcam = null;
+      status.textContent = '⚠️ 載入失敗：請確認模型網址正確並允許攝影機權限。可先用鍵盤試玩。';
+      return;
+    }
+  }
+  newGame();
+};
+
+$('#kbBtn').onclick = () => {
+  ensureAudio();
+  if (!model) $('#status').textContent = '鍵盤模式：← → 移動，空白鍵開護盾。';
+  newGame();
+  cv.focus();
+};
+</script>
+</body>
+</html>
